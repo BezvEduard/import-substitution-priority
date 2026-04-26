@@ -48,9 +48,10 @@ def compute_import_share(data):
 
 
 def compute_growth(data, epsilon=1):
-    # C2 = ln((импорт текущего года + epsilon) / (импорт прошлого года + epsilon)).
+    # C2 = ln(отношение), если импорт вырос. При снижении импорта C2 = 0.
     data = data.copy()
-    data["C2"] = np.log((data["Import"] + epsilon) / (data["Previous_Import"] + epsilon))
+    import_ratio = (data["Import"] + epsilon) / (data["Previous_Import"] + epsilon)
+    data["C2"] = np.where(import_ratio >= 1, np.log(import_ratio), 0)
     return data
 
 
