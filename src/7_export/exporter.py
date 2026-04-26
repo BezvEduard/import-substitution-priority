@@ -9,6 +9,7 @@ def export_ranking_to_excel(
     output_path,
     calculation_year=None,
     clipping_mode=None,
+    weight_method=None,
 ):
     # Сохраняем итоговый рейтинг и служебную информацию в Excel-файл.
     output_path = Path(output_path)
@@ -19,6 +20,7 @@ def export_ranking_to_excel(
         ahp_info,
         calculation_year,
         clipping_mode,
+        weight_method,
     )
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
@@ -45,15 +47,19 @@ def make_weights_table(ahp_info):
     return pd.DataFrame(rows)
 
 
-def make_parameters_table(ahp_info, calculation_year=None, clipping_mode=None):
+def make_parameters_table(ahp_info, calculation_year=None, clipping_mode=None, weight_method=None):
     # Собираем параметры расчета и показатели согласованности AHP.
+    if weight_method is None:
+        weight_method = ahp_info.get("weight_method", "AHP")
+
     rows = [
         {"Parameter": "calculation_year", "Value": calculation_year},
         {"Parameter": "clipping_mode", "Value": clipping_mode},
-        {"Parameter": "lambda_max", "Value": ahp_info["lambda_max"]},
-        {"Parameter": "consistency_index", "Value": ahp_info["consistency_index"]},
-        {"Parameter": "consistency_ratio", "Value": ahp_info["consistency_ratio"]},
-        {"Parameter": "is_consistent", "Value": ahp_info["is_consistent"]},
+        {"Parameter": "weight_method", "Value": weight_method},
+        {"Parameter": "lambda_max", "Value": ahp_info.get("lambda_max")},
+        {"Parameter": "consistency_index", "Value": ahp_info.get("consistency_index")},
+        {"Parameter": "consistency_ratio", "Value": ahp_info.get("consistency_ratio")},
+        {"Parameter": "is_consistent", "Value": ahp_info.get("is_consistent")},
     ]
 
     return pd.DataFrame(rows)

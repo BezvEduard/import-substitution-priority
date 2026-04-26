@@ -109,6 +109,24 @@ def calculate_priority_ranking(data, pairwise_matrix=None):
     return ranking, ahp_info
 
 
+def calculate_priority_ranking_with_weights(data, weights):
+    # Считаем итоговый Score и ранг с вручную заданными весами.
+    check_weights(weights)
+    ranking = calculate_score(data, weights)
+    ranking = add_rank(ranking)
+
+    model_info = {
+        "weights": weights,
+        "lambda_max": None,
+        "consistency_index": None,
+        "consistency_ratio": None,
+        "is_consistent": None,
+        "weight_method": "manual",
+    }
+
+    return ranking, model_info
+
+
 def calculate_score(data, weights):
     # Score = сумма произведений нормализованных критериев на их веса.
     check_normalized_columns(data)
