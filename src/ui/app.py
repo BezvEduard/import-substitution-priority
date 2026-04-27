@@ -9,14 +9,15 @@ preprocessing = import_module("src.2_preprocessing.preprocessing")
 indicators = import_module("src.3_indicators.indicators")
 normalization = import_module("src.4_normalization.normalization")
 model = import_module("src.5_model.model")
+charts = import_module("src.6_visualization.charts")
 exporter = import_module("src.7_export.exporter")
 
 
 CRITERIA_LABELS = {
-    "C1": "C1 Import Share",
-    "C2": "C2 Growth",
-    "C3": "C3 Import Ratio",
-    "C4": "C4 HHI",
+    "C1": "C1 Доля импорта",
+    "C2": "C2 Рост импорта",
+    "C3": "C3 Неконкурентоспособность",
+    "C4": "C4 Концентрация поставщиков",
 }
 
 
@@ -38,6 +39,7 @@ class ImportSubstitutionApp:
         self.ahp_entries = {}
         self.ahp_inverse_labels = {}
         self.manual_weight_vars = {}
+        self.chart_images = {}
 
         self.create_widgets()
         self.fill_default_ahp_matrix()
@@ -85,6 +87,9 @@ class ImportSubstitutionApp:
         export_button = ttk.Button(controls, text="Экспорт Excel", command=self.export_excel)
         export_button.grid(row=0, column=10, padx=6)
 
+        charts_button = ttk.Button(controls, text="Экспорт графиков", command=self.save_charts)
+        charts_button.grid(row=0, column=11, padx=6)
+
         controls.columnconfigure(1, weight=1)
 
         self.create_ahp_widgets()
@@ -123,6 +128,8 @@ class ImportSubstitutionApp:
                 ahp_frame,
                 text=CRITERIA_LABELS[criterion],
                 anchor="center",
+                justify="center",
+                wraplength=130,
             ).grid(row=1, column=column_index, padx=4, pady=2, sticky="nsew")
 
         for row_index, row_criterion in enumerate(criteria, start=2):
@@ -130,6 +137,7 @@ class ImportSubstitutionApp:
                 ahp_frame,
                 text=CRITERIA_LABELS[row_criterion],
                 anchor="w",
+                wraplength=170,
             ).grid(row=row_index, column=0, padx=4, pady=2, sticky="w")
 
             for column_index, column_criterion in enumerate(criteria, start=1):
@@ -145,7 +153,7 @@ class ImportSubstitutionApp:
                         sticky="nsew",
                     )
                 elif matrix_row < matrix_column:
-                    entry = ttk.Entry(ahp_frame, width=10, justify="center")
+                    entry = ttk.Entry(ahp_frame, width=7, justify="center")
                     entry.grid(row=row_index, column=column_index, padx=4, pady=2)
                     entry.bind("<KeyRelease>", self.update_ahp_inverse_labels)
                     entry.bind("<FocusOut>", self.update_ahp_inverse_labels)
@@ -162,7 +170,7 @@ class ImportSubstitutionApp:
                     self.ahp_inverse_labels[(matrix_row, matrix_column)] = label
 
         for column_index in range(7):
-            ahp_frame.columnconfigure(column_index, weight=1)
+            ahp_frame.columnconfigure(column_index, weight=0)
 
     def create_manual_weight_widgets(self):
         self.weights_frame = ttk.LabelFrame(self.root, text="Ручные веса критериев", padding=10)
@@ -224,29 +232,63 @@ class ImportSubstitutionApp:
             "C4",
         ]
 
-        self.table = ttk.Treeview(table_frame, columns=columns, show="headings", height=20)
+        headings = {
+            "Rank": "Rank",
+            "TNVED": "TNVED",
+            "Score": "Score",
+            "Import": "Import",
+            "Export": "Export",
+            "C1": CRITERIA_LABELS["C1"],
+            "C2": CRITERIA_LABELS["C2"],
+            "C3": CRITERIA_LABELS["C3"],
+            "C4": CRITERIA_LABELS["C4"],
+        }
+
+        result_panes = ttk.PanedWindow(table_frame, orient=tk.HORIZONTAL)
+        result_panes.pack(fill="both", expand=True)
+
+        table_area = ttk.Frame(result_panes)
+        self.chart_frame = ttk.LabelFrame(result_panes, text="График вклада критериев", padding=8)
+
+        result_panes.add(table_area, weight=3)
+        result_panes.add(self.chart_frame, weight=2)
+
+        self.table = ttk.Treeview(table_area, columns=columns, show="headings", height=20)
 
         column_widths = {
-            "Rank": 70,
-            "TNVED": 110,
-            "Score": 110,
-            "Import": 150,
-            "Export": 150,
-            "C1": 100,
-            "C2": 100,
-            "C3": 100,
-            "C4": 100,
+            "Rank": 55,
+            "TNVED": 80,
+            "Score": 85,
+            "Import": 115,
+            "Export": 105,
+            "C1": 120,
+            "C2": 120,
+            "C3": 165,
+            "C4": 175,
         }
 
         for column in columns:
-            self.table.heading(column, text=column)
-            self.table.column(column, width=column_widths[column], anchor="center")
+            self.table.heading(column, text=headings[column])
+            self.table.column(
+                column,
+                width=column_widths[column],
+                minwidth=column_widths[column],
+                anchor="center",
+                stretch=True,
+            )
 
-        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.table.yview)
+        scrollbar = ttk.Scrollbar(table_area, orient="vertical", command=self.table.yview)
         self.table.configure(yscrollcommand=scrollbar.set)
 
         self.table.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        self.components_chart_label = ttk.Label(
+            self.chart_frame,
+            text="График появится после расчета",
+            anchor="center",
+        )
+        self.components_chart_label.pack(fill="both", expand=True)
 
     def choose_file(self):
         path = filedialog.askopenfilename(
@@ -391,6 +433,7 @@ class ImportSubstitutionApp:
 
             self.update_table()
             self.update_summary(calculation_year, clipping_mode)
+            self.update_charts_preview()
         except Exception as error:
             self.status.set("Ошибка расчета")
             messagebox.showerror("Ошибка расчета", str(error))
@@ -445,6 +488,24 @@ class ImportSubstitutionApp:
             )
         )
 
+    def update_charts_preview(self):
+        output_path = charts.save_score_components_chart(
+            self.ranking,
+            self.ahp_info,
+            output_path="outputs/charts/preview/preview_score_components.png",
+            top_n=10,
+            figsize=(5.2, 4.0),
+            dpi=100,
+        )
+
+        self.chart_images["score_components"] = tk.PhotoImage(
+            file=output_path
+        )
+        self.components_chart_label.config(
+            image=self.chart_images["score_components"],
+            text="",
+        )
+
     def export_excel(self):
         if self.ranking is None or self.ahp_info is None:
             messagebox.showwarning("Нет данных", "Сначала выполните расчет")
@@ -478,6 +539,38 @@ class ImportSubstitutionApp:
             messagebox.showinfo("Экспорт завершен", f"Файл сохранен:\n{saved_path}")
         except Exception as error:
             messagebox.showerror("Ошибка экспорта", str(error))
+
+    def save_charts(self):
+        if self.ranking is None or self.ahp_info is None:
+            messagebox.showwarning("Нет данных", "Сначала выполните расчет")
+            return
+
+        output_path = filedialog.asksaveasfilename(
+            title="Сохранить график",
+            initialdir="outputs",
+            initialfile=f"score_components_{self.year.get()}.png",
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png")],
+        )
+
+        if not output_path:
+            return
+
+        try:
+            saved_path = charts.save_score_components_chart(
+                self.ranking,
+                self.ahp_info,
+                output_path,
+                top_n=10,
+            )
+
+            self.status.set(f"График сохранен: {saved_path}")
+            messagebox.showinfo(
+                "График сохранен",
+                f"Файл сохранен:\n{saved_path}",
+            )
+        except Exception as error:
+            messagebox.showerror("Ошибка сохранения графика", str(error))
 
 
 def run_app():
