@@ -25,7 +25,7 @@ def export_ranking_to_excel(
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         ranking.to_excel(writer, sheet_name="Ranking", index=False)
-        weights_table.to_excel(writer, sheet_name="AHP Weights", index=False)
+        weights_table.to_excel(writer, sheet_name="Weights", index=False)
         parameters_table.to_excel(writer, sheet_name="Parameters", index=False)
 
     return output_path

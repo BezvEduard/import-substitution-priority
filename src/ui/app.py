@@ -26,6 +26,7 @@ class ImportSubstitutionApp:
         self.root = root
         self.root.title("Import Substitution Priority")
         self.root.geometry("1280x780")
+        self.maximize_window()
 
         self.file_path = tk.StringVar(value="data/trade.xlsx")
         self.year = tk.StringVar(value="2025")
@@ -40,6 +41,12 @@ class ImportSubstitutionApp:
         self.ahp_inverse_labels = {}
         self.manual_weight_vars = {}
         self.chart_images = {}
+        self.result_panes = None
+        self.table_columns = []
+        self.table_headings = {}
+        self.table_min_column_widths = {}
+        self.sort_column = None
+        self.sort_descending = True
 
         self.create_widgets()
         self.fill_default_ahp_matrix()
@@ -104,6 +111,12 @@ class ImportSubstitutionApp:
 
         self.create_ranking_table()
 
+    def maximize_window(self):
+        try:
+            self.root.state("zoomed")
+        except tk.TclError:
+            self.root.attributes("-zoomed", True)
+
     def create_ahp_widgets(self):
         self.ahp_frame = ttk.LabelFrame(self.root, text="Матрица попарных сравнений AHP", padding=10)
         ahp_frame = self.ahp_frame
@@ -116,7 +129,7 @@ class ImportSubstitutionApp:
         reset_button = ttk.Button(
             ahp_frame,
             text="Сбросить матрицу",
-            command=self.fill_default_ahp_matrix,
+            command=self.reset_ahp_matrix,
         )
         reset_button.grid(row=0, column=6, sticky="e", padx=(12, 0), pady=(0, 8))
 
@@ -244,14 +257,24 @@ class ImportSubstitutionApp:
             "C4": CRITERIA_LABELS["C4"],
         }
 
-        result_panes = ttk.PanedWindow(table_frame, orient=tk.HORIZONTAL)
+        self.result_panes = tk.PanedWindow(
+            table_frame,
+            orient=tk.HORIZONTAL,
+            sashwidth=10,
+            sashrelief=tk.FLAT,
+            bg="#9AA3AF",
+            bd=0,
+        )
+        result_panes = self.result_panes
         result_panes.pack(fill="both", expand=True)
 
-        table_area = ttk.Frame(result_panes)
+        table_panel = ttk.LabelFrame(result_panes, text="Результаты", padding=6)
+        table_area = ttk.Frame(table_panel)
+        table_area.pack(fill="both", expand=True)
         self.chart_frame = ttk.LabelFrame(result_panes, text="График вклада критериев", padding=8)
 
-        result_panes.add(table_area, weight=3)
-        result_panes.add(self.chart_frame, weight=2)
+        result_panes.add(table_panel, minsize=240, stretch="always")
+        result_panes.add(self.chart_frame, minsize=240, stretch="always")
 
         self.table = ttk.Treeview(table_area, columns=columns, show="headings", height=20)
 
@@ -267,12 +290,32 @@ class ImportSubstitutionApp:
             "C4": 175,
         }
 
+        min_column_widths = {
+            "Rank": 35,
+            "TNVED": 45,
+            "Score": 55,
+            "Import": 65,
+            "Export": 65,
+            "C1": 60,
+            "C2": 60,
+            "C3": 75,
+            "C4": 75,
+        }
+
+        self.table_columns = columns
+        self.table_headings = headings
+        self.table_min_column_widths = min_column_widths
+
         for column in columns:
-            self.table.heading(column, text=headings[column])
+            self.table.heading(
+                column,
+                text=headings[column],
+                command=lambda selected_column=column: self.sort_table_by_column(selected_column),
+            )
             self.table.column(
                 column,
                 width=column_widths[column],
-                minwidth=column_widths[column],
+                minwidth=min_column_widths[column],
                 anchor="center",
                 stretch=True,
             )
@@ -282,6 +325,7 @@ class ImportSubstitutionApp:
 
         self.table.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        self.table.bind("<Double-1>", self.shrink_column_on_separator_double_click)
 
         self.components_chart_label = ttk.Label(
             self.chart_frame,
@@ -289,6 +333,21 @@ class ImportSubstitutionApp:
             anchor="center",
         )
         self.components_chart_label.pack(fill="both", expand=True)
+        self.root.after(100, self.set_initial_result_pane_width)
+
+    def set_initial_result_pane_width(self, attempt=0):
+        if self.result_panes is None:
+            return
+
+        self.root.update_idletasks()
+        total_width = self.result_panes.winfo_width()
+
+        if total_width <= 1 and attempt < 10:
+            self.root.after(100, lambda: self.set_initial_result_pane_width(attempt + 1))
+            return
+
+        if total_width > 1:
+            self.result_panes.sash_place(0, int(total_width * 2 / 3), 0)
 
     def choose_file(self):
         path = filedialog.askopenfilename(
@@ -326,6 +385,10 @@ class ImportSubstitutionApp:
             entry.insert(0, self.format_matrix_value(default_matrix[row_index][column_index]))
 
         self.update_ahp_inverse_labels()
+
+    def reset_ahp_matrix(self):
+        self.fill_default_ahp_matrix()
+        self.status.set("Матрица AHP сброшена к значениям по умолчанию")
 
     def update_ahp_inverse_labels(self, event=None):
         for (row_index, column_index), label in self.ahp_inverse_labels.items():
@@ -431,6 +494,8 @@ class ImportSubstitutionApp:
                 )
                 self.ahp_info["weight_method"] = "AHP"
 
+            self.sort_column = None
+            self.sort_descending = True
             self.update_table()
             self.update_summary(calculation_year, clipping_mode)
             self.update_charts_preview()
@@ -438,11 +503,16 @@ class ImportSubstitutionApp:
             self.status.set("Ошибка расчета")
             messagebox.showerror("Ошибка расчета", str(error))
 
-    def update_table(self):
+    def update_table(self, data=None):
         for item in self.table.get_children():
             self.table.delete(item)
 
-        for _, row in self.ranking.iterrows():
+        if data is None:
+            data = self.ranking
+
+        self.update_table_headings()
+
+        for _, row in data.iterrows():
             self.table.insert(
                 "",
                 "end",
@@ -458,6 +528,71 @@ class ImportSubstitutionApp:
                     f"{row['C4']:.6f}",
                 ],
             )
+
+    def sort_table_by_column(self, column):
+        if self.ranking is None:
+            return
+
+        if self.sort_column == column:
+            self.sort_descending = not self.sort_descending
+        else:
+            self.sort_column = column
+            self.sort_descending = True
+
+        sorted_data = self.ranking.sort_values(
+            by=column,
+            ascending=not self.sort_descending,
+            kind="mergesort",
+        )
+        self.update_table(sorted_data)
+
+    def update_table_headings(self):
+        for column in self.table_columns:
+            heading = self.table_headings[column]
+
+            if column == self.sort_column:
+                arrow = " ↓" if self.sort_descending else " ↑"
+                heading = f"{heading}{arrow}"
+
+            self.table.heading(
+                column,
+                text=heading,
+                command=lambda selected_column=column: self.sort_table_by_column(selected_column),
+            )
+
+    def shrink_column_on_separator_double_click(self, event):
+        if self.table.identify_region(event.x, event.y) != "separator":
+            return None
+
+        column = self.find_column_left_of_separator(event.x)
+
+        if column is not None:
+            self.shrink_column_to_minimum(column)
+
+        return "break"
+
+    def shrink_column_to_minimum(self, column):
+        column_index = self.table_columns.index(column)
+
+        for table_column in self.table_columns:
+            current_width = int(self.table.column(table_column, "width"))
+            self.table.column(table_column, width=current_width)
+
+        for index, table_column in enumerate(self.table_columns):
+            self.table.column(table_column, stretch=index > column_index)
+
+        self.table.column(column, width=self.table_min_column_widths[column])
+
+    def find_column_left_of_separator(self, x_position):
+        boundary_position = 0
+
+        for column in self.table_columns:
+            boundary_position += int(self.table.column(column, "width"))
+
+            if abs(x_position - boundary_position) <= 8:
+                return column
+
+        return None
 
     def update_summary(self, calculation_year, clipping_mode):
         weights = self.ahp_info["weights"]
@@ -505,6 +640,25 @@ class ImportSubstitutionApp:
             image=self.chart_images["score_components"],
             text="",
         )
+        self.root.after_idle(self.expand_chart_pane_to_fit_preview)
+
+    def expand_chart_pane_to_fit_preview(self):
+        if self.result_panes is None or "score_components" not in self.chart_images:
+            return
+
+        self.root.update_idletasks()
+        total_width = self.result_panes.winfo_width()
+
+        if total_width <= 1:
+            return
+
+        image_width = self.chart_images["score_components"].width()
+        chart_padding = 48
+        minimum_table_width = 240
+        required_chart_width = image_width + chart_padding
+
+        sash_x = max(minimum_table_width, total_width - required_chart_width)
+        self.result_panes.sash_place(0, sash_x, 0)
 
     def export_excel(self):
         if self.ranking is None or self.ahp_info is None:
