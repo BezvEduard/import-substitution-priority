@@ -41,6 +41,8 @@ class ImportSubstitutionApp:
         self.ahp_entries = {}
         self.ahp_inverse_labels = {}
         self.manual_weight_vars = {}
+        self.expert_count = tk.StringVar(value="1")
+        self.manual_expert_rows = []
         self.chart_images = {}
         self.ahp_preview = tk.StringVar(value="Можете предварительно рассчитать веса")
         self.result_panes = None
@@ -90,7 +92,13 @@ class ImportSubstitutionApp:
         weight_method_box.grid(row=0, column=8, padx=6)
         weight_method_box.bind("<<ComboboxSelected>>", self.update_weight_input_visibility)
 
-        calculate_button = ttk.Button(controls, text="Рассчитать", command=self.calculate)
+        calculate_button = tk.Button(
+            controls,
+            text="\u0420\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u0442\u044c",
+            command=self.calculate,
+            bg="#D9EAFD",
+            activebackground="#C8DCF5",
+        )
         calculate_button.grid(row=0, column=9, padx=(18, 6))
 
         export_button = ttk.Button(controls, text="Экспорт Excel", command=self.export_excel)
@@ -237,14 +245,33 @@ class ImportSubstitutionApp:
             "Заполняется только верхняя часть матрицы. Нижняя часть считается автоматически обратными значениями: "
             "если C1/C2 = 3, то C2/C1 = 1/3."
         )
+
     def create_manual_weight_widgets(self):
-        self.weights_frame = ttk.LabelFrame(self.root, text="Ручные веса критериев", padding=10)
+        self.weights_frame = ttk.LabelFrame(self.root, padding=10)
         weights_frame = self.weights_frame
 
-        ttk.Label(
-            weights_frame,
-            text="Используются при методе весов manual. Сумма весов должна быть равна 1.",
-        ).grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 8))
+        title_frame = ttk.Frame(weights_frame)
+        title_frame.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Label(title_frame, text="Ручные веса критериев").pack(side="left")
+
+        settings_frame = ttk.Frame(weights_frame)
+        settings_frame.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        ttk.Label(settings_frame, text="Количество экспертов").pack(side="left")
+        expert_count_box = ttk.Combobox(
+            settings_frame,
+            textvariable=self.expert_count,
+            values=["1", "2", "3", "4"],
+            width=5,
+            state="readonly",
+        )
+        expert_count_box.pack(side="left", padx=(6, 0))
+        expert_count_box.bind("<<ComboboxSelected>>", self.update_manual_expert_visibility)
+
+        input_frame = ttk.Frame(weights_frame)
+        input_frame.grid(row=2, column=0, sticky="nw")
+
+        legend_frame = ttk.LabelFrame(weights_frame, text="Критерии", padding=8)
+        legend_frame.grid(row=2, column=1, padx=(18, 0), sticky="nw")
 
         default_weights = {
             "C1": "0.25",
@@ -253,25 +280,65 @@ class ImportSubstitutionApp:
             "C4": "0.25",
         }
 
-        for column_index, criterion in enumerate(model.CRITERIA):
-            ttk.Label(weights_frame, text=CRITERIA_LABELS[criterion]).grid(
-                row=1,
-                column=column_index * 2,
-                padx=(0, 4),
-                sticky="w",
-            )
+        ttk.Label(input_frame, text="", width=10).grid(row=0, column=0, padx=3, pady=(0, 2))
+        for column_index, criterion in enumerate(model.CRITERIA, start=1):
+            ttk.Label(
+                input_frame,
+                text=criterion,
+                anchor="center",
+                width=7,
+            ).grid(row=0, column=column_index, padx=3, pady=(0, 2), sticky="nsew")
 
-            variable = tk.StringVar(value=default_weights[criterion])
-            entry = ttk.Entry(weights_frame, textvariable=variable, width=10, justify="center")
-            entry.grid(row=1, column=column_index * 2 + 1, padx=(0, 12), sticky="w")
-            self.manual_weight_vars[criterion] = variable
+        for expert_index in range(4):
+            row_widgets = []
+            expert_label = ttk.Label(
+                input_frame,
+                text=f"Эксперт {expert_index + 1}",
+                anchor="w",
+                width=10,
+            )
+            expert_label.grid(row=expert_index + 1, column=0, padx=3, pady=2, sticky="w")
+            row_widgets.append(expert_label)
+
+            for column_index, criterion in enumerate(model.CRITERIA, start=1):
+                variable = tk.StringVar(value=default_weights[criterion])
+                entry = ttk.Entry(input_frame, textvariable=variable, width=7, justify="center")
+                entry.grid(row=expert_index + 1, column=column_index, padx=3, pady=2)
+                self.manual_weight_vars[(expert_index, criterion)] = variable
+                row_widgets.append(entry)
+
+            self.manual_expert_rows.append(row_widgets)
 
         equal_button = ttk.Button(
-            weights_frame,
+            input_frame,
             text="Равные веса",
             command=self.fill_equal_manual_weights,
         )
-        equal_button.grid(row=1, column=8, padx=(8, 0), sticky="w")
+        equal_button.grid(row=5, column=0, columnspan=5, sticky="w", pady=(8, 0))
+
+        for row_index, criterion in enumerate(model.CRITERIA):
+            ttk.Label(
+                legend_frame,
+                text=CRITERIA_LABELS[criterion],
+                anchor="w",
+            ).grid(row=row_index, column=0, sticky="w", pady=1)
+
+        for column_index in range(5):
+            input_frame.columnconfigure(column_index, weight=0)
+
+        weights_frame.columnconfigure(0, weight=0)
+        weights_frame.columnconfigure(1, weight=0)
+        self.update_manual_expert_visibility()
+
+    def update_manual_expert_visibility(self, event=None):
+        expert_count = int(self.expert_count.get())
+
+        for expert_index, row_widgets in enumerate(self.manual_expert_rows):
+            for widget in row_widgets:
+                if expert_index < expert_count:
+                    widget.grid()
+                else:
+                    widget.grid_remove()
 
     def update_weight_input_visibility(self, event=None):
         if self.weight_method.get() == "manual":
@@ -492,13 +559,31 @@ class ImportSubstitutionApp:
         return matrix
 
     def get_manual_weights(self):
-        weights = {}
+        expert_count = int(self.expert_count.get())
+        expert_weights = []
 
-        for criterion, variable in self.manual_weight_vars.items():
-            weights[criterion] = self.parse_weight_value(variable.get())
+        for expert_index in range(expert_count):
+            weights = {}
 
-        model.check_weights(weights)
-        return weights
+            for criterion in model.CRITERIA:
+                variable = self.manual_weight_vars[(expert_index, criterion)]
+                weights[criterion] = self.parse_weight_value(variable.get())
+
+            try:
+                model.check_weights(weights)
+            except ValueError as error:
+                raise ValueError(f"Эксперт {expert_index + 1}: {error}") from error
+
+            expert_weights.append(weights)
+
+        averaged_weights = {}
+        for criterion in model.CRITERIA:
+            averaged_weights[criterion] = sum(
+                weights[criterion] for weights in expert_weights
+            ) / expert_count
+
+        model.check_weights(averaged_weights)
+        return averaged_weights
 
     def parse_weight_value(self, raw_value):
         value = raw_value.strip().replace(",", ".")
