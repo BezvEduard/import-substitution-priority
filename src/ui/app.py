@@ -33,7 +33,8 @@ class ImportSubstitutionApp:
         self.clipping_mode = tk.StringVar(value="1-99")
         self.weight_method = tk.StringVar(value="AHP")
         self.status = tk.StringVar(value="Выберите файл и запустите расчет")
-        self.summary = tk.StringVar(value="")
+        self.summary_parameters = tk.StringVar(value="")
+        self.summary_weights = tk.StringVar(value="")
 
         self.ranking = None
         self.ahp_info = None
@@ -41,6 +42,7 @@ class ImportSubstitutionApp:
         self.ahp_inverse_labels = {}
         self.manual_weight_vars = {}
         self.chart_images = {}
+        self.ahp_preview = tk.StringVar(value="Можете предварительно рассчитать веса")
         self.result_panes = None
         self.table_columns = []
         self.table_headings = {}
@@ -107,7 +109,8 @@ class ImportSubstitutionApp:
         info.pack(fill="x")
 
         ttk.Label(info, textvariable=self.status).pack(anchor="w")
-        ttk.Label(info, textvariable=self.summary).pack(anchor="w")
+        ttk.Label(info, textvariable=self.summary_parameters).pack(anchor="w")
+        ttk.Label(info, textvariable=self.summary_weights).pack(anchor="w")
 
         self.create_ranking_table()
 
@@ -118,73 +121,122 @@ class ImportSubstitutionApp:
             self.root.attributes("-zoomed", True)
 
     def create_ahp_widgets(self):
-        self.ahp_frame = ttk.LabelFrame(self.root, text="Матрица попарных сравнений AHP", padding=10)
+        self.ahp_frame = ttk.LabelFrame(self.root, padding=10)
         ahp_frame = self.ahp_frame
 
-        ttk.Label(
-            ahp_frame,
-            text="Заполняются значения выше диагонали. Нижняя часть матрицы рассчитывается автоматически.",
-        ).grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 8))
+        title_frame = ttk.Frame(ahp_frame)
+        title_frame.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
-        reset_button = ttk.Button(
-            ahp_frame,
-            text="Сбросить матрицу",
-            command=self.reset_ahp_matrix,
-        )
-        reset_button.grid(row=0, column=6, sticky="e", padx=(12, 0), pady=(0, 8))
+        ttk.Label(title_frame, text="Матрица попарных сравнений AHP").pack(side="left")
+        ttk.Button(
+            title_frame,
+            text="?",
+            width=2,
+            command=self.show_ahp_help,
+        ).pack(side="left", padx=(6, 0))
+
+        matrix_frame = ttk.Frame(ahp_frame)
+        matrix_frame.grid(row=1, column=0, sticky="nw")
+
+        legend_frame = ttk.LabelFrame(ahp_frame, text="Критерии", padding=8)
+        legend_frame.grid(row=1, column=1, padx=(18, 0), sticky="nw")
 
         criteria = model.CRITERIA
 
-        ttk.Label(ahp_frame, text="").grid(row=1, column=0, sticky="nsew")
+        ttk.Label(matrix_frame, text="").grid(row=0, column=0, sticky="nsew")
         for column_index, criterion in enumerate(criteria, start=1):
             ttk.Label(
-                ahp_frame,
-                text=CRITERIA_LABELS[criterion],
+                matrix_frame,
+                text=criterion,
                 anchor="center",
                 justify="center",
-                wraplength=130,
-            ).grid(row=1, column=column_index, padx=4, pady=2, sticky="nsew")
+                width=6,
+            ).grid(row=0, column=column_index, padx=3, pady=2, sticky="nsew")
 
-        for row_index, row_criterion in enumerate(criteria, start=2):
+        for row_index, row_criterion in enumerate(criteria, start=1):
             ttk.Label(
-                ahp_frame,
-                text=CRITERIA_LABELS[row_criterion],
-                anchor="w",
-                wraplength=170,
-            ).grid(row=row_index, column=0, padx=4, pady=2, sticky="w")
+                matrix_frame,
+                text=row_criterion,
+                anchor="center",
+                width=6,
+            ).grid(row=row_index, column=0, padx=3, pady=2, sticky="nsew")
 
             for column_index, column_criterion in enumerate(criteria, start=1):
-                matrix_row = row_index - 2
+                matrix_row = row_index - 1
                 matrix_column = column_index - 1
 
                 if matrix_row == matrix_column:
-                    ttk.Label(ahp_frame, text="1", anchor="center").grid(
+                    ttk.Label(matrix_frame, text="1", anchor="center", width=6).grid(
                         row=row_index,
                         column=column_index,
-                        padx=4,
+                        padx=3,
                         pady=2,
                         sticky="nsew",
                     )
                 elif matrix_row < matrix_column:
-                    entry = ttk.Entry(ahp_frame, width=7, justify="center")
-                    entry.grid(row=row_index, column=column_index, padx=4, pady=2)
+                    entry = ttk.Entry(matrix_frame, width=6, justify="center")
+                    entry.grid(row=row_index, column=column_index, padx=3, pady=2)
                     entry.bind("<KeyRelease>", self.update_ahp_inverse_labels)
                     entry.bind("<FocusOut>", self.update_ahp_inverse_labels)
                     self.ahp_entries[(matrix_row, matrix_column)] = entry
                 else:
-                    label = ttk.Label(ahp_frame, text="", anchor="center")
+                    label = ttk.Label(matrix_frame, text="", anchor="center", width=6)
                     label.grid(
                         row=row_index,
                         column=column_index,
-                        padx=4,
+                        padx=3,
                         pady=2,
                         sticky="nsew",
                     )
                     self.ahp_inverse_labels[(matrix_row, matrix_column)] = label
 
-        for column_index in range(7):
-            ahp_frame.columnconfigure(column_index, weight=0)
+        buttons_frame = ttk.Frame(matrix_frame)
+        buttons_frame.grid(row=5, column=0, columnspan=5, sticky="w", pady=(8, 0))
 
+        reset_button = ttk.Button(
+            buttons_frame,
+            text="Сбросить матрицу",
+            command=self.reset_ahp_matrix,
+        )
+        reset_button.pack(side="left")
+
+        preview_button = ttk.Button(
+            buttons_frame,
+            text="Рассчитать веса",
+            command=self.preview_ahp_weights,
+        )
+        preview_button.pack(side="left", padx=(8, 0))
+
+        ttk.Label(
+            ahp_frame,
+            textvariable=self.ahp_preview,
+            anchor="w",
+            justify="left",
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+
+        for row_index, criterion in enumerate(criteria):
+            ttk.Label(
+                legend_frame,
+                text=CRITERIA_LABELS[criterion],
+                anchor="w",
+            ).grid(row=row_index, column=0, sticky="w", pady=1)
+
+        for column_index in range(5):
+            matrix_frame.columnconfigure(column_index, weight=0)
+
+        ahp_frame.columnconfigure(0, weight=0)
+        ahp_frame.columnconfigure(1, weight=0)
+
+    def show_ahp_help(self):
+        messagebox.showinfo(
+            "Подсказка по AHP",
+            "В матрице сравниваются критерии между собой.\n\n"
+            "Значение в ячейке показывает, во сколько раз критерий слева важнее критерия сверху.\n\n"
+            "Например, 3 в строке C1 и столбце C2 означает: C1 важнее C2 в 3 раза. "
+            "Значение 1 означает равную важность.\n\n"
+            "Заполняется только верхняя часть матрицы. Нижняя часть считается автоматически обратными значениями: "
+            "если C1/C2 = 3, то C2/C1 = 1/3."
+        )
     def create_manual_weight_widgets(self):
         self.weights_frame = ttk.LabelFrame(self.root, text="Ручные веса критериев", padding=10)
         weights_frame = self.weights_frame
@@ -388,7 +440,34 @@ class ImportSubstitutionApp:
 
     def reset_ahp_matrix(self):
         self.fill_default_ahp_matrix()
+        self.ahp_preview.set("Можете предварительно рассчитать веса")
         self.status.set("Матрица AHP сброшена к значениям по умолчанию")
+
+    def preview_ahp_weights(self):
+        try:
+            pairwise_matrix = self.get_pairwise_matrix()
+            weights, ahp_info = model.calculate_ahp_weights(pairwise_matrix)
+
+            if ahp_info["is_consistent"]:
+                consistency_text = "матрица согласована"
+            else:
+                consistency_text = "матрица не согласована"
+
+            self.ahp_preview.set(
+                " | ".join(
+                    [
+                        f"C1: {weights['C1']:.4f}",
+                        f"C2: {weights['C2']:.4f}",
+                        f"C3: {weights['C3']:.4f}",
+                        f"C4: {weights['C4']:.4f}",
+                        f"CR: {ahp_info['consistency_ratio']:.4f} ({consistency_text})",
+                    ]
+                )
+            )
+            self.status.set("Веса AHP рассчитаны предварительно")
+        except Exception as error:
+            self.status.set("Ошибка расчета весов AHP")
+            messagebox.showerror("Ошибка расчета весов AHP", str(error))
 
     def update_ahp_inverse_labels(self, event=None):
         for (row_index, column_index), label in self.ahp_inverse_labels.items():
@@ -397,7 +476,7 @@ class ImportSubstitutionApp:
             try:
                 value = self.parse_comparison_value(source_entry.get())
                 inverse_value = 1 / value
-                label.config(text=self.format_matrix_value(inverse_value))
+                label.config(text=self.format_inverse_matrix_value(value, inverse_value))
             except ValueError:
                 label.config(text="ошибка")
 
@@ -454,6 +533,12 @@ class ImportSubstitutionApp:
 
         return f"{value:.4f}".rstrip("0").rstrip(".")
 
+    def format_inverse_matrix_value(self, source_value, inverse_value):
+        if source_value > 1 and abs(source_value - round(source_value)) < 0.000001:
+            return f"1/{int(round(source_value))}"
+
+        return self.format_matrix_value(inverse_value)
+
     def calculate(self):
         try:
             path = Path(self.file_path.get())
@@ -496,6 +581,7 @@ class ImportSubstitutionApp:
 
             self.sort_column = None
             self.sort_descending = True
+            self.ahp_preview.set("Можете предварительно рассчитать веса")
             self.update_table()
             self.update_summary(calculation_year, clipping_mode)
             self.update_charts_preview()
@@ -609,15 +695,16 @@ class ImportSubstitutionApp:
             consistency_text = "согласована" if self.ahp_info["is_consistent"] else "не согласована"
             consistency_summary = f"CR: {consistency_ratio:.4f} ({consistency_text})"
 
-        self.summary.set(
+        self.summary_parameters.set(
+            f"\u041f\u0430\u0440\u0430\u043c\u0435\u0442\u0440\u044b: \u043a\u043b\u0438\u043f\u043f\u0438\u043d\u0433 {clipping_mode}, \u043c\u0435\u0442\u043e\u0434 \u0432\u0435\u0441\u043e\u0432 {weight_method}"
+        )
+        self.summary_weights.set(
             " | ".join(
                 [
-                    f"clipping: {clipping_mode}",
-                    f"weights: {weight_method}",
-                    f"C1: {weights['C1']:.4f}",
-                    f"C2: {weights['C2']:.4f}",
-                    f"C3: {weights['C3']:.4f}",
-                    f"C4: {weights['C4']:.4f}",
+                    f"\u0412\u0435\u0441\u0430: C1 {weights['C1']:.4f}",
+                    f"C2 {weights['C2']:.4f}",
+                    f"C3 {weights['C3']:.4f}",
+                    f"C4 {weights['C4']:.4f}",
                     consistency_summary,
                 ]
             )
