@@ -28,7 +28,7 @@ class ImportSubstitutionApp:
         self.root.geometry("1280x780")
         self.maximize_window()
 
-        self.file_path = tk.StringVar(value="data/trade.xlsx")
+        self.file_path = tk.StringVar(value="")
         self.year = tk.StringVar(value="2025")
         self.clipping_mode = tk.StringVar(value="1-99")
         self.weight_method = tk.StringVar(value="AHP")
@@ -481,11 +481,11 @@ class ImportSubstitutionApp:
     def update_year_options(self):
         path = Path(self.file_path.get())
 
-        if not path.exists():
+        if not self.file_path.get().strip() or not path.is_file():
             return
 
         try:
-            raw_data = loader.load_trade_data(path)
+            raw_data = loader.load_excel_data(path)
             prepared_data = preprocessing.preprocess_trade_data(raw_data)
             years = sorted(prepared_data["Year"].unique())
             years = [str(year) for year in years]
@@ -631,10 +631,13 @@ class ImportSubstitutionApp:
             clipping_mode = self.clipping_mode.get()
             weight_method = self.weight_method.get()
 
+            if not self.file_path.get().strip() or not path.is_file():
+                raise ValueError("\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 Excel-\u0444\u0430\u0439\u043b \u0434\u0430\u043d\u043d\u044b\u0445")
+
             self.status.set("Выполняется расчет...")
             self.root.update_idletasks()
 
-            raw_data = loader.load_trade_data(path)
+            raw_data = loader.load_excel_data(path)
             prepared_data = preprocessing.preprocess_trade_data(raw_data)
             yearly_trade = preprocessing.make_yearly_trade_table(prepared_data)
             country_import = preprocessing.make_country_import_table(prepared_data)
