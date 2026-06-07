@@ -7,3 +7,6 @@ venv/
 outputs/*
 data/*
 !data/.gitkeep
+build/
+dist/
+

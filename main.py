@@ -5,19 +5,27 @@ import sys
 
 
 def configure_tcl_tk():
-    # Помогаем tkinter найти Tcl/Tk в локальной установке Python.
-    python_root = Path(sys.base_prefix)
-    tcl_path = python_root / "tcl" / "tcl8.6"
-    tk_path = python_root / "tcl" / "tk8.6"
+    # Help tkinter find Tcl/Tk in regular Python and inside PyInstaller exe.
+    search_roots = []
 
-    if tcl_path.exists() and "TCL_LIBRARY" not in os.environ:
-        os.environ["TCL_LIBRARY"] = str(tcl_path)
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        search_roots.append(Path(sys._MEIPASS))
 
-    if tk_path.exists() and "TK_LIBRARY" not in os.environ:
-        os.environ["TK_LIBRARY"] = str(tk_path)
+    search_roots.append(Path(sys.base_prefix))
+
+    for root in search_roots:
+        tcl_path = root / "tcl" / "tcl8.6"
+        tk_path = root / "tcl" / "tk8.6"
+
+        if tcl_path.exists() and "TCL_LIBRARY" not in os.environ:
+            os.environ["TCL_LIBRARY"] = str(tcl_path)
+
+        if tk_path.exists() and "TK_LIBRARY" not in os.environ:
+            os.environ["TK_LIBRARY"] = str(tk_path)
 
 
 if __name__ == "__main__":
     configure_tcl_tk()
     app = import_module("src.ui.app")
     app.run_app()
+
