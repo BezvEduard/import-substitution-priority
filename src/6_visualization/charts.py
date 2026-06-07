@@ -85,9 +85,15 @@ def plot_score_components(ranking, weights, output_path, top_n=10, figsize=(11, 
     ax.set_xlabel("Вклад в Score")
     ax.set_ylabel("TNVED")
     ax.grid(axis="x", alpha=0.25)
-    ax.legend(loc="lower right", fontsize=8)
+    ax.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.20),
+        ncol=2,
+        fontsize=8,
+    )
 
     fig.tight_layout()
+    fig.subplots_adjust(bottom=0.28)
     fig.savefig(output_path, dpi=dpi)
     plt.close(fig)
 
